@@ -1209,35 +1209,6 @@ QString MainWindow::filter() const
     return ui->searchBar->isVisible() ? ui->searchBar->text() : QString();
 }
 
-void MainWindow::updateNotifications()
-{
-    m_notifications->setNotificationOpacity( theme().color("notification_bg").alphaF() );
-    m_notifications->setNotificationStyleSheet( theme().getNotificationStyleSheet() );
-
-    AppConfig appConfig;
-    int id = appConfig.option<Config::notification_position>();
-    NotificationDaemon::Position position;
-    switch (id) {
-    case 0: position = NotificationDaemon::Top; break;
-    case 1: position = NotificationDaemon::Bottom; break;
-    case 2: position = NotificationDaemon::TopRight; break;
-    case 3: position = NotificationDaemon::BottomRight; break;
-    case 4: position = NotificationDaemon::BottomLeft; break;
-    default: position = NotificationDaemon::TopLeft; break;
-    }
-    m_notifications->setPosition(position);
-
-    const int x = appConfig.option<Config::notification_horizontal_offset>();
-    const int y = appConfig.option<Config::notification_vertical_offset>();
-    m_notifications->setOffset(x, y);
-
-    const int w = appConfig.option<Config::notification_maximum_width>();
-    const int h = appConfig.option<Config::notification_maximum_height>();
-    m_notifications->setMaximumSize(w, h);
-
-    m_notifications->updateNotifications();
-}
-
 void MainWindow::updateWindowTransparency(bool mouseOver)
 {
     int opacity = 100 - (mouseOver || isActiveWindow() ? m_options.transparencyFocused : m_options.transparency);
@@ -2085,6 +2056,7 @@ void MainWindow::showError(const QString &msg)
     notification->setTitle( tr("CopyQ Error", "Notification error message title") );
     notification->setMessage(msg);
     notification->setIcon(IconTimesCircle);
+    notification->show();
 }
 
 Notification *MainWindow::createNotification(const QString &id)
@@ -2404,8 +2376,6 @@ void MainWindow::loadSettings()
     updateTrayMenuItems();
     updateTrayMenuCommands();
 
-    updateNotifications();
-
     updateIcon();
 
     ui->searchBar->loadSettings();
@@ -2418,6 +2388,8 @@ void MainWindow::loadSettings()
     enterBrowseMode();
 
     updateEnabledCommands();
+
+    m_notifications->setIconColor( theme().color("notification_fg") );
 
     COPYQ_LOG("Configuration loaded");
 }

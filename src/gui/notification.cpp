@@ -19,251 +19,193 @@
 
 #include "gui/notification.h"
 
-#include "common/common.h"
-#include "common/display.h"
-#include "common/textdata.h"
+#include "common/log.h"
 #include "common/timer.h"
 #include "gui/iconfactory.h"
 #include "gui/icons.h"
 
-#include <QApplication>
-#include <QDialog>
-#include <QDialogButtonBox>
-#include <QGridLayout>
-#include <QHBoxLayout>
-#include <QIcon>
-#include <QLabel>
-#include <QMap>
-#include <QMouseEvent>
-#include <QPainter>
-#include <QPushButton>
-#include <QTextEdit>
-#include <QVBoxLayout>
-
-#include <memory>
+#include <KNotification>
+#include <QDir>
+#include <QFile>
+#include <QGuiApplication>
+#include <QStandardPaths>
+#include <QWidget>
 
 namespace {
 
-class NotificationButtonWidget final : public QPushButton
-{
-    Q_OBJECT
+constexpr auto componentName = "copyq";
 
-public:
-    NotificationButtonWidget(const NotificationButton &button, QWidget *parent)
-        : QPushButton(button.name, parent)
-        , m_button(button)
-    {
-        connect( this, &NotificationButtonWidget::clicked,
-                 this, &NotificationButtonWidget::onClicked );
-    }
+constexpr auto defaultConfiguration = R"(
+[Global]
+IconName=copyq
+Comment=CopyQ Clipboard Manager
+Name=CopyQ
 
-signals:
-    void clickedButton(const NotificationButton &button);
-
-private:
-    void onClicked()
-    {
-        emit clickedButton(m_button);
-    }
-
-    NotificationButton m_button;
-};
+[Event/generic]
+Name=Generic event
+Action=Popup
+)";
 
 } // namespace
 
-Notification::Notification()
+void Notification::initConfiguration()
 {
-    auto bodyLayout = new QVBoxLayout(this);
-    bodyLayout->setMargin(8);
-    m_body = new QWidget(this);
-    bodyLayout->addWidget(m_body);
-    bodyLayout->setSizeConstraint(QLayout::SetMaximumSize);
+    const QString dataDir = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation);
+    QDir dir(dataDir);
+    const bool pathOk = dir.mkpath("knotifications5") && dir.cd("knotifications5");
+    if (!pathOk) {
+        log( QString("Failed to create directory for notification configuration: %1")
+             .arg(dir.absolutePath()), LogWarning );
+        return;
+    }
 
-    m_layout = new QGridLayout(m_body);
-    m_layout->setMargin(0);
+    const QString configPath = dir.absoluteFilePath("%1.notifyrc").arg(componentName);
+    QFile configFile(configPath);
+    if ( !configFile.open(QIODevice::WriteOnly) ) {
+        log( QString("Failed to open notification config file \"%1\": %2")
+             .arg(configPath, configFile.errorString()), LogWarning );
+        return;
+    }
 
-    m_iconLabel = new QLabel(this);
-    m_iconLabel->setSizePolicy(QSizePolicy::Maximum, QSizePolicy::Maximum);
+    if ( configFile.write(defaultConfiguration) == -1 ) {
+        log( QString("Failed to write notification config file \"%1\": %2")
+             .arg(configPath, configFile.errorString()), LogWarning );
+        return;
+    }
 
-    m_msgLabel = new QLabel(this);
-    m_msgLabel->setAlignment(Qt::AlignTop | Qt::AlignAbsolute);
+    configFile.close();
+}
 
-    setTitle(QString());
+Notification::Notification(const QColor &iconColor, QObject *parent)
+    : QObject(parent)
+    , m_iconColor(iconColor)
+{
+    initSingleShotTimer( &m_timer, 0, this, &Notification::close );
+}
 
-    setWindowFlags(Qt::ToolTip);
-    setWindowOpacity(m_opacity);
-    setAttribute(Qt::WA_ShowWithoutActivating);
+Notification::~Notification()
+{
+    if (m_notification) {
+        disconnect(m_notification);
+        // FIXME: For some reason this doesn't update the notification.
+        m_notification->setFlags(KNotification::CloseOnTimeout);
+        m_notification->update();
+    }
 }
 
 void Notification::setTitle(const QString &title)
 {
-    if ( !title.isEmpty() ) {
-        if (!m_titleLabel)
-            m_titleLabel = new QLabel(this);
-
-        m_titleLabel->setObjectName("NotificationTitle");
-        m_titleLabel->setTextFormat(Qt::PlainText);
-        m_titleLabel->setText(title);
-
-        m_layout->addWidget(m_iconLabel, 0, 0);
-        m_layout->addWidget(m_titleLabel, 0, 1, Qt::AlignCenter);
-        m_layout->addWidget(m_msgLabel, 1, 0, 1, 2);
-    } else {
-        if (m_titleLabel) {
-            m_titleLabel->deleteLater();
-            m_titleLabel = nullptr;
-        }
-
-        m_layout->addWidget(m_iconLabel, 0, 0, Qt::AlignTop);
-        m_layout->addWidget(m_msgLabel, 0, 1);
-    }
+    m_title = title;
 }
 
 void Notification::setMessage(const QString &msg, Qt::TextFormat format)
 {
-    m_msgLabel->setTextFormat(format);
-    m_msgLabel->setText(msg);
-    m_msgLabel->setVisible( !msg.isEmpty() );
+    if (format == Qt::PlainText)
+        m_message = msg.toHtmlEscaped();
+    else
+        m_message = msg;
 }
 
 void Notification::setPixmap(const QPixmap &pixmap)
 {
-    m_msgLabel->setPixmap(pixmap);
+    m_icon.clear();
+    m_iconId = 0;
+    m_pixmap = pixmap;
 }
 
 void Notification::setIcon(const QString &icon)
 {
     m_icon = icon;
+    m_iconId = 0;
+    m_pixmap = QPixmap();
 }
 
 void Notification::setIcon(ushort icon)
 {
-    m_icon = QString(QChar(icon));
+    m_icon.clear();
+    m_iconId = icon;
+    m_pixmap = QPixmap();
 }
 
 void Notification::setInterval(int msec)
 {
-    if (msec >= 0) {
-        initSingleShotTimer( &m_timer, msec, this, &Notification::onTimeout );
-        m_timer.start();
-    } else {
-        m_timer.stop();
-    }
-}
-
-void Notification::setOpacity(qreal opacity)
-{
-    m_opacity = opacity;
-    setWindowOpacity(m_opacity);
+    m_intervalMsec = msec;
 }
 
 void Notification::setButtons(const NotificationButtons &buttons)
 {
-    for (const auto &buttonWidget : findChildren<NotificationButtonWidget*>())
-        buttonWidget->deleteLater();
+    m_buttons = buttons;
+}
 
-    if ( !buttons.isEmpty() ) {
-        if (!m_buttonLayout)
-            m_buttonLayout = new QHBoxLayout();
+void Notification::show()
+{
+    if (m_notification) {
+        update();
+        m_notification->update();
+        return;
+    }
 
-        m_buttonLayout->addStretch();
-        m_layout->addLayout(m_buttonLayout, 2, 0, 1, 2);
+    m_notification = new KNotification("generic");
+    m_notification->setComponentName(componentName);
 
-        for (const auto &button : buttons) {
-            const auto buttonWidget = new NotificationButtonWidget(button, this);
-            connect( buttonWidget, &NotificationButtonWidget::clickedButton,
-                     this, &Notification::onButtonClicked );
-            m_buttonLayout->addWidget(buttonWidget);
-        }
-    } else if (m_buttonLayout) {
-        m_buttonLayout->deleteLater();
-        m_buttonLayout = nullptr;
+    connect( m_notification.data(), static_cast<void (KNotification::*)(unsigned int)>(&KNotification::activated),
+             this, &Notification::onButtonClicked );
+    connect( m_notification.data(), &KNotification::closed,
+             this, &Notification::close );
+    connect( m_notification.data(), &KNotification::ignored,
+             this, &Notification::close );
+    connect( m_notification.data(), static_cast<void (KNotification::*)()>(&KNotification::activated),
+             this, &Notification::close );
+
+    update();
+    m_notification->sendEvent();
+}
+
+void Notification::close()
+{
+    if (m_notification) {
+        m_notification->close();
+        m_notification = nullptr;
+    }
+    emit closeNotification(this);
+}
+
+void Notification::onButtonClicked(unsigned int id)
+{
+    if ( static_cast<unsigned int>(m_buttons.size()) < id - 1 ) {
+        emit buttonClicked(m_buttons[id - 1]);
+        emit closeNotification(this);
     }
 }
 
-void Notification::updateIcon()
+void Notification::update()
 {
-    const QColor color = getDefaultIconColor(*this);
-    const auto height = static_cast<int>( m_msgLabel->fontMetrics().lineSpacing() * 1.2 );
-    const auto iconId = toIconId(m_icon);
+    m_notification->setTitle(m_title);
+    m_notification->setText(m_message);
 
-    const auto ratio = devicePixelRatio();
+    if ( !m_icon.isEmpty() ) {
+        m_notification->setIconName(m_icon);
+    } else {
+        const auto height = 64;
+        const auto ratio = qApp->devicePixelRatio();
+        QPixmap pixmap = m_pixmap;
+        if (m_iconId != 0)
+            pixmap = createPixmap(m_iconId, m_iconColor, height * ratio);
+        pixmap.setDevicePixelRatio(ratio);
+        m_notification->setPixmap(pixmap);
+    }
 
-    auto pixmap = iconId == 0
-            ? QPixmap(m_icon)
-            : createPixmap(iconId, color, height * ratio);
+    QStringList actions;
+    for (const auto &button : m_buttons)
+        actions.append(button.name);
+    m_notification->setActions(actions);
 
-    pixmap.setDevicePixelRatio(ratio);
-
-    m_iconLabel->setPixmap(pixmap);
-    m_iconLabel->resize(pixmap.size());
+    if (m_intervalMsec < 0) {
+        m_timer.stop();
+        m_notification->setFlags(KNotification::Persistent);
+    } else {
+        // Specific timeout is not supported by KNotifications.
+        m_timer.start(m_intervalMsec);
+        m_notification->setFlags(KNotification::CloseOnTimeout);
+    }
 }
-
-void Notification::adjust()
-{
-    m_body->adjustSize();
-    adjustSize();
-}
-
-void Notification::mousePressEvent(QMouseEvent *)
-{
-    m_timer.stop();
-
-    emit closeNotification(this);
-}
-
-void Notification::enterEvent(QEvent *event)
-{
-    setWindowOpacity(1.0);
-    m_timer.stop();
-    QWidget::enterEvent(event);
-}
-
-void Notification::leaveEvent(QEvent *event)
-{
-    setWindowOpacity(m_opacity);
-    if ( m_timer.interval() > 0 )
-        m_timer.start();
-    QWidget::leaveEvent(event);
-}
-
-void Notification::paintEvent(QPaintEvent *event)
-{
-    QWidget::paintEvent(event);
-
-    QPainter p(this);
-
-    // black outer border
-    p.setPen(Qt::black);
-    p.drawRect(rect().adjusted(0, 0, -1, -1));
-
-    // light inner border
-    p.setPen( palette().color(QPalette::Window).lighter(300) );
-    p.drawRect(rect().adjusted(1, 1, -2, -2));
-}
-
-void Notification::showEvent(QShowEvent *event)
-{
-    // QTBUG-33078: Window opacity must be set after show event.
-    setWindowOpacity(m_opacity);
-    QWidget::showEvent(event);
-}
-
-void Notification::hideEvent(QHideEvent *event)
-{
-    QWidget::hideEvent(event);
-    emit closeNotification(this);
-}
-
-void Notification::onTimeout()
-{
-    emit closeNotification(this);
-}
-
-void Notification::onButtonClicked(const NotificationButton &button)
-{
-    emit buttonClicked(button);
-    emit closeNotification(this);
-}
-
-#include "notification.moc"

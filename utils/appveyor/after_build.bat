@@ -14,6 +14,10 @@ set Build=%BuildRoot%\%BUILD_SUB_DIR%
 set BuildPlugins=%BuildRoot%\plugins\%BUILD_SUB_DIR%
 
 mkdir "%Destination%"
+
+dir %QTDIR%\bin\
+xcopy /F "%QTDIR%\bin\*KF5*.dll" "%Destination%" || goto :error
+
 xcopy /F "%Build%\copyq.exe" "%Destination%" || goto :error
 
 xcopy /F "%Source%\AUTHORS" "%Destination%" || goto :error

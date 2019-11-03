@@ -22,6 +22,10 @@ packages=(
     libxfixes-dev
     libxtst-dev
 
+    # KDE Frameworks
+    libkf5notifications-dev
+    extra-cmake-modules
+
     # encryption plugin
     gnupg2
 

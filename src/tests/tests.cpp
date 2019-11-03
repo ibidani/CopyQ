@@ -149,6 +149,8 @@ bool testStderr(const QByteArray &stderrData, TestInterface::ReadStderrFlag flag
     output.remove("QtWarning: Failed to get QCocoaScreen for NSObject(0x0)");
     output.remove("ERROR: Failed to open session mutex: QSystemSemaphore::handle:: ftok failed");
 #endif
+    // KNotification bug
+    output.remove(R"(QtWarning: QLayout: Attempting to add QLayout "" to QWidget "", which already has a layout)");
 
     if ( output.indexOf(reFailure) != -1 )
         return false;

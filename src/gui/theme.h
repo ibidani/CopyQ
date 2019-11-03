@@ -76,9 +76,6 @@ public:
     /** Return stylesheet for tooltips. */
     QString getToolTipStyleSheet() const;
 
-    /** Return stylesheet for notifications. */
-    QString getNotificationStyleSheet() const;
-
     Qt::ScrollBarPolicy scrollbarPolicy() const;
 
     bool useSystemIcons() const;

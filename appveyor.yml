@@ -5,16 +5,22 @@ image:
 - Visual Studio 2017
 
 environment:
+  KF5_VERSION: 5.63
+  KF5_PATCH: 0
+  SNORETOAST_VERSION: 0.7.0
+
   matrix:
-    - QTDIR: C:\Qt\5.12.4\mingw73_32
-      CMAKE_GENERATOR: MinGW Makefiles
-      MINGW_PATH: C:\Qt\Tools\mingw730_32
+    #- QTDIR: C:\Qt\5.12.4\mingw73_32
+    #  CMAKE_GENERATOR: MinGW Makefiles
+    #  MINGW_PATH: C:\Qt\Tools\mingw730_32
+    #  SNORETOAST_RELEASE: '-msvc2017_32-cl'
 
     - QTDIR: C:\Qt\5.12.4\msvc2017_64
       CMAKE_GENERATOR: Visual Studio 15 2017
       CMAKE_GENERATOR_ARCH: x64
       CMD_VCVARS: 'C:\Program Files (x86)\Microsoft Visual Studio\2017\Community\VC\Auxiliary\Build\vcvars64.bat'
       BUILD_SUB_DIR: Debug
+      SNORETOAST_RELEASE: '-msvc2017_64-cl'
 
 # Parameters for default build commands (build_script is used instead).
 build:

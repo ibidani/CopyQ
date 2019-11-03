@@ -696,6 +696,7 @@ public:
         notification->setMessage(popupMessage);
         notification->setIcon(IconKeyboard);
         notification->setInterval(2000);
+        notification->show();
 
         if ( keys.startsWith(":") ) {
             const auto text = keys.mid(1);
@@ -1218,6 +1219,7 @@ void ScriptableProxy::showMessage(const QString &title,
     notification->setIcon(icon);
     notification->setInterval(msec);
     notification->setButtons(buttons);
+    notification->show();
 }
 
 QVariantMap ScriptableProxy::nextItem(const QString &tabName, int where)
@@ -2024,7 +2026,7 @@ void ScriptableProxy::showDataNotification(const QVariantMap &data)
         return;
 
     auto notification = m_wnd->createNotification("CopyQ_clipboard_notification");
-    notification->setIcon( QString(QChar(IconPaste)) );
+    notification->setIcon(IconPaste);
     notification->setInterval(intervalSeconds * 1000);
 
     const int maximumWidthPoints = appConfig.option<Config::notification_maximum_width>();
@@ -2032,7 +2034,7 @@ void ScriptableProxy::showDataNotification(const QVariantMap &data)
 
     const QStringList formats = data.keys();
     const int imageIndex = formats.indexOf(QRegExp("^image/.*"));
-    const QFont &font = notification->font();
+    const QFont &font = qApp->font();
     const bool isHidden = data.contains(mimeHidden);
 
     if (data.isEmpty()) {
@@ -2043,15 +2045,15 @@ void ScriptableProxy::showDataNotification(const QVariantMap &data)
 
         QString format;
         if (n > 1) {
-            format = QObject::tr("%1<div align=\"right\"><small>&mdash; %n lines &mdash;</small></div>",
+            format = QObject::tr("%1<br><i> - %n lines - </i>",
                                  "Notification label for multi-line text in clipboard", n);
         } else {
             format = QObject::tr("%1", "Notification label for single-line text in clipboard");
         }
 
         text = elideText(text, font, QString(), false, width, maxLines);
-        text = escapeHtml(text);
-        text.replace( QString("\n"), QString("<br />") );
+        text = text.toHtmlEscaped();
+        text.replace( QString("\n"), QString("<br>") );
         notification->setMessage( format.arg(text), Qt::RichText );
     } else if (!isHidden && imageIndex != -1) {
         QPixmap pix;
@@ -2067,6 +2069,8 @@ void ScriptableProxy::showDataNotification(const QVariantMap &data)
         const QString text = textLabelForData(data, font, QString(), false, width, maxLines);
         notification->setMessage(text, Qt::PlainText);
     }
+
+    notification->show();
 }
 
 bool ScriptableProxy::enableMenuItem(int actionId, int currentRun, int menuItemMatchCommandIndex, bool enabled)

@@ -555,8 +555,6 @@ private:
     void updateTrayMenuItems();
     void updateTrayMenuCommands();
 
-    void updateNotifications();
-
     void updateWindowTransparency(bool mouseOver = false);
 
     /** Update name and icon of "disable/enable monitoring" menu actions. */

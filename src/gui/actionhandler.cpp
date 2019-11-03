@@ -163,11 +163,11 @@ void ActionHandler::closeAction(Action *action)
 void ActionHandler::showActionErrors(Action *action, const QString &message, ushort icon)
 {
     m_actionModel->actionFailed(action, message);
-    const auto notificationId = qHash(action->commandLine()) ^ qHash(message);
-    auto notification = m_notificationDaemon->createNotification( QString::number(notificationId) );
-    if ( notification->isVisible() )
+    const auto notificationId = QString::number(qHash(action->commandLine()) ^ qHash(message));
+    if ( m_notificationDaemon->findNotification(notificationId) )
         return;
 
+    auto notification = m_notificationDaemon->createNotification(notificationId);
     auto msg = message;
 
     if ( !action->errorOutput().isEmpty() )
@@ -195,4 +195,5 @@ void ActionHandler::showActionErrors(Action *action, const QString &message, ush
     notification->setTitle(title);
     notification->setMessage(msg);
     notification->setIcon(icon);
+    notification->show();
 }
