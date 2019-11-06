@@ -5,11 +5,11 @@ on: [push]
 jobs:
   build:
 
-    runs-on: fedora
+    runs-on: linux
     
     steps:
     - uses: actions/checkout@v1
-      name: cmake
+    - name: cmake
       run: cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr/local .
     - name: make
       run: make
